@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Orrery</title>
+<style>
+  :root {
+    --paper: #f4eee1;
+    --card: #fbf7ec;
+    --ink: #29231a;
+    --ink-soft: #77694f;
+    --line: #ddd2b8;
+    --accent: #8a4a30;
+    --accent-2: #40606b;
+    --shadow: 0 1px 2px rgba(64,48,20,.07), 0 10px 30px rgba(64,48,20,.08);
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14171d;
+      --card: #1b1f27;
+      --ink: #c6ccd5;
+      --ink-soft: #7d8794;
+      --line: #2a303b;
+      --accent: #c98f6e;
+      --accent-2: #8fb3c6;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14171d;
+    --card: #1b1f27;
+    --ink: #c6ccd5;
+    --ink-soft: #7d8794;
+    --line: #2a303b;
+    --accent: #c98f6e;
+    --accent-2: #8fb3c6;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scrollbar-gutter: stable; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    line-height: 1.55;
+    min-height: 100vh;
+    transition: background .3s, color .3s;
+  }
+  a { color: var(--accent); }
+  button { font-family: var(--serif); cursor: pointer; }
+
+  /* ---------- lock screen ---------- */
+  #lock {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--paper); gap: 1.6rem; padding: 2rem; text-align: center;
+  }
+  #lock.hidden { display: none; }
+  #lock svg { width: 130px; height: 130px; opacity: .85; }
+  #lock .rings { stroke: var(--ink-soft); }
+  #lock .body { fill: var(--accent); }
+  #lock .star { fill: var(--ink); }
+  #lock h1 {
+    font-size: 1.35rem; font-weight: 500;
+    letter-spacing: .55em; text-indent: .55em; text-transform: uppercase;
+  }
+  #lock p.sub { color: var(--ink-soft); font-style: italic; font-size: .95rem; margin-top: -.9rem; }
+  #lock form { display: flex; gap: .6rem; align-items: center; }
+  #lock input {
+    font-family: var(--serif); font-size: 1rem; color: var(--ink);
+    background: transparent; border: 0; border-bottom: 1px solid var(--ink-soft);
+    padding: .45em .2em; width: 240px; outline: none; text-align: center;
+    letter-spacing: .05em;
+  }
+  #lock input:focus { border-color: var(--accent); }
+  #lock button {
+    background: none; border: 1px solid var(--line); color: var(--ink);
+    border-radius: 2em; padding: .4em 1.1em; font-size: .9rem;
+  }
+  #lock button:hover { border-color: var(--accent); color: var(--accent); }
+  #lockError { color: var(--accent); font-size: .85rem; font-style: italic; min-height: 1.2em; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .8rem 1.4rem;
+    padding: 1.4rem clamp(1rem, 4vw, 3rem) .9rem;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--paper); z-index: 10;
+  }
+  header h1 {
+    font-size: 1rem; font-weight: 500; letter-spacing: .45em; text-transform: uppercase;
+    margin-right: auto;
+  }
+  header h1 span { color: var(--accent); }
+  nav.types, nav.projects { display: flex; gap: .2rem; flex-wrap: wrap; }
+  .pill {
+    background: none; border: 1px solid transparent; color: var(--ink-soft);
+    font-size: .88rem; padding: .2em .75em; border-radius: 2em;
+  }
+  .pill:hover { color: var(--ink); }
+  .pill.on { border-color: var(--line); color: var(--ink); background: var(--card); }
+  #search {
+    font-family: var(--serif); font-size: .9rem; color: var(--ink);
+    background: transparent; border: 0; border-bottom: 1px solid var(--line);
+    padding: .25em .1em; width: 130px; outline: none;
+  }
+  #search:focus { border-color: var(--accent); width: 190px; }
+  #search { transition: width .25s; }
+  .iconbtn { background: none; border: 0; color: var(--ink-soft); font-size: 1rem; padding: .2em .4em; }
+  .iconbtn:hover { color: var(--ink); }
+
+  /* ---------- tag row ---------- */
+  #tags {
+    display: flex; flex-wrap: wrap; gap: .35rem;
+    padding: .8rem clamp(1rem, 4vw, 3rem);
+  }
+  .tag {
+    background: none; border: 0; color: var(--ink-soft); font-size: .82rem;
+    font-style: italic; padding: .1em .5em; border-radius: 2em;
+  }
+  .tag:hover { color: var(--accent); }
+  .tag.on { color: var(--accent); background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+
+  /* ---------- grid ---------- */
+  main { padding: .6rem clamp(1rem, 4vw, 3rem) 3rem; }
+  #grid { columns: 4 270px; column-gap: 1.2rem; }
+  .card {
+    break-inside: avoid; margin-bottom: 1.2rem;
+    background: var(--card); border: 1px solid var(--line); border-radius: 4px;
+    box-shadow: var(--shadow); overflow: hidden; cursor: pointer;
+    transition: transform .18s, box-shadow .18s;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card .imgwrap { background: var(--line); min-height: 120px; display: flex; }
+  .card img { width: 100%; display: block; }
+  .card .pad { padding: .9rem 1rem; }
+  .card h2 { font-size: 1.02rem; font-weight: 600; margin-bottom: .3rem; }
+  .card .excerpt { font-size: .9rem; color: var(--ink-soft); }
+  .card .excerpt p { margin-bottom: .4em; }
+  .card.quote .pad { padding: 1.2rem 1.15rem 1rem; }
+  .card.quote blockquote, .card.quote p {
+    font-size: 1.08rem; font-style: italic; line-height: 1.5;
+  }
+  .card.quote blockquote::before, .card.quote p:first-of-type::before { content: "“"; color: var(--accent); }
+  .card.quote blockquote::after, .card.quote p:last-of-type::after { content: "”"; color: var(--accent); }
+  .card .meta {
+    display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap;
+    padding: 0 1rem .75rem; font-size: .72rem; color: var(--ink-soft);
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .card.quote .meta { padding-top: .1rem; }
+  .card .meta .proj { color: var(--accent-2); }
+  .kind { color: var(--accent); }
+
+  #empty { color: var(--ink-soft); font-style: italic; padding: 2rem 0; }
+  footer {
+    padding: 0 clamp(1rem, 4vw, 3rem) 2.5rem;
+    color: var(--ink-soft); font-size: .82rem; font-style: italic;
+  }
+
+  /* ---------- modal ---------- */
+  #modal {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    background: color-mix(in srgb, var(--paper) 65%, transparent);
+    backdrop-filter: blur(6px);
+    overflow-y: auto; padding: 4vh 1rem;
+  }
+  #modal.open { display: block; }
+  #modal .box {
+    max-width: 660px; margin: 0 auto; background: var(--card);
+    border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  #modal img { width: 100%; display: block; }
+  #modal .pad { padding: 1.6rem 1.8rem; }
+  #modal h2 { font-size: 1.4rem; font-weight: 600; margin-bottom: .8rem; }
+  #modal .body { font-size: 1rem; }
+  #modal .body p, #modal .body ul, #modal .body blockquote, #modal .body h3, #modal .body h4 { margin-bottom: .8em; }
+  #modal .body blockquote { font-style: italic; border-left: 2px solid var(--accent); padding-left: 1em; color: var(--ink-soft); }
+  #modal .body ul { padding-left: 1.2em; }
+  #modal .mmeta {
+    margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line);
+    font-size: .78rem; color: var(--ink-soft); letter-spacing: .1em; text-transform: uppercase;
+    display: flex; flex-wrap: wrap; gap: .4rem 1.1rem;
+  }
+  #modal .mmeta a { color: var(--accent-2); }
+  #modalClose {
+    position: sticky; top: 0; float: right; margin: .5rem;
+    background: var(--card); border: 1px solid var(--line); border-radius: 2em;
+    color: var(--ink-soft); font-size: .9rem; padding: .15em .7em;
+  }
+
+  /* ---------- projects panel ---------- */
+  #projectNote {
+    max-width: 640px; margin: .4rem 0 1.6rem; padding: 1.1rem 1.3rem;
+    background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent-2);
+    border-radius: 4px; font-size: .95rem;
+  }
+  #projectNote h2 { font-size: 1.05rem; margin-bottom: .5rem; }
+  #projectNote p, #projectNote ul { margin-bottom: .6em; }
+  #projectNote ul { padding-left: 1.2em; }
+  #app { display: none; }
+  #app.open { display: block; }
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <svg viewBox="0 0 120 120" aria-hidden="true">
+    <g fill="none" stroke-width="1" class="rings">
+      <ellipse cx="60" cy="60" rx="52" ry="20" opacity=".8"/>
+      <ellipse cx="60" cy="60" rx="38" ry="14" opacity=".6"/>
+      <ellipse cx="60" cy="60" rx="22" ry="8" opacity=".5"/>
+    </g>
+    <circle cx="12" cy="66" r="2.6" class="body"/>
+    <circle cx="93" cy="49" r="2" class="body"/>
+    <circle cx="60" cy="52" r="1.6" class="body"/>
+    <path class="star" d="M60 52 l1.8 5.4 5.6 .2 -4.4 3.4 1.5 5.4 -4.5 -3.2 -4.5 3.2 1.5 -5.4 -4.4 -3.4 5.6 -.2z" transform="translate(0,4) scale(.9)" opacity="0"/>
+    <path class="star" d="M60 40 l2 14 14 2 -14 2 -2 14 -2 -14 -14 -2 14 -2z" transform="translate(0,4)"/>
+  </svg>
+  <h1>Orrery</h1>
+  <p class="sub">a commonplace atlas</p>
+  <form id="lockForm">
+    <input id="pw" type="password" autocomplete="current-password" placeholder="password" autofocus>
+    <button type="submit">enter</button>
+  </form>
+  <div id="lockError"></div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>Orrery<span>.</span></h1>
+    <nav class="types" id="typeNav"></nav>
+    <nav class="projects" id="projNav"></nav>
+    <input id="search" type="search" placeholder="search…">
+    <button class="iconbtn" id="themeBtn" title="toggle theme">◐</button>
+    <button class="iconbtn" id="lockBtn" title="lock">⚿</button>
+  </header>
+  <div id="tags"></div>
+  <main>
+    <div id="projectNote" hidden></div>
+    <div id="grid"></div>
+    <div id="empty" hidden>Nothing here yet — the atlas awaits.</div>
+  </main>
+  <footer id="foot"></footer>
+</div>
+
+<div id="modal"><div class="box"><button id="modalClose">close</button><div id="modalInner"></div></div></div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const state = {
+    pw: null, keys: new Map(), data: null, blobs: new Map(),
+    filters: { type: 'all', project: 'all', tags: new Set(), q: '' },
+  };
+  const TYPE_LABELS = { all: 'All', image: 'Images', quote: 'Quotes', idea: 'Ideas', note: 'Notes' };
+
+  // ---------- crypto ----------
+  async function deriveKey(pw, salt) {
+    const hex = [...salt].map(b => b.toString(16).padStart(2, '0')).join('');
+    if (state.keys.has(hex)) return state.keys.get(hex);
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+      km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    state.keys.set(hex, key);
+    return key;
+  }
+  async function decryptBuf(buf) {
+    const b = new Uint8Array(buf);
+    const key = await deriveKey(state.pw, b.slice(0, 16));
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(16, 28) }, key, b.slice(28));
+  }
+  async function fetchDecrypted(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('fetch failed: ' + url);
+    return decryptBuf(await res.arrayBuffer());
+  }
+
+  // ---------- unlock ----------
+  async function tryUnlock(pw) {
+    state.pw = pw;
+    state.keys.clear();
+    const plain = await fetchDecrypted('data.enc');
+    state.data = JSON.parse(new TextDecoder().decode(plain));
+    sessionStorage.setItem('orrery.pw', pw);
+    $('#lock').classList.add('hidden');
+    $('#app').classList.add('open');
+    buildChrome();
+    render();
+  }
+  $('#lockForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('#lockError').textContent = '';
+    try { await tryUnlock($('#pw').value); }
+    catch { $('#lockError').textContent = 'that key does not fit this lock'; }
+  });
+  $('#lockBtn')?.addEventListener('click', () => {
+    sessionStorage.removeItem('orrery.pw');
+    location.reload();
+  });
+
+  // ---------- images ----------
+  const observer = new IntersectionObserver(async es => {
+    for (const en of es) {
+      if (!en.isIntersecting) continue;
+      const img = en.target;
+      observer.unobserve(img);
+      const { file, mime } = JSON.parse(img.dataset.enc);
+      try {
+        if (!state.blobs.has(file)) {
+          const plain = await fetchDecrypted(file);
+          state.blobs.set(file, URL.createObjectURL(new Blob([plain], { type: mime })));
+        }
+        img.src = state.blobs.get(file);
+      } catch (e) { console.error(e); }
+    }
+  }, { rootMargin: '400px' });
+
+  function imgEl(entry) {
+    const img = document.createElement('img');
+    img.alt = entry.title;
+    img.dataset.enc = JSON.stringify(entry.image);
+    observer.observe(img);
+    return img;
+  }
+
+  // ---------- chrome (filters) ----------
+  function buildChrome() {
+    const types = ['all', ...new Set(state.data.entries.map(e => e.type))];
+    $('#typeNav').innerHTML = '';
+    for (const t of types) {
+      const b = document.createElement('button');
+      b.className = 'pill' + (state.filters.type === t ? ' on' : '');
+      b.textContent = TYPE_LABELS[t] || t;
+      b.onclick = () => { state.filters.type = t; buildChrome(); render(); };
+      $('#typeNav').appendChild(b);
+    }
+    const projs = [{ id: 'all', title: 'Everything' }, ...state.data.projects];
+    $('#projNav').innerHTML = '';
+    for (const p of projs) {
+      const b = document.createElement('button');
+      b.className = 'pill' + (state.filters.project === p.id ? ' on' : '');
+      b.textContent = p.title;
+      b.style.color = state.filters.project === p.id ? 'var(--accent-2)' : '';
+      b.onclick = () => { state.filters.project = p.id; buildChrome(); render(); };
+      $('#projNav').appendChild(b);
+    }
+    const tags = [...new Set(state.data.entries.flatMap(e => e.tags))].sort();
+    $('#tags').innerHTML = '';
+    for (const t of tags) {
+      const b = document.createElement('button');
+      b.className = 'tag' + (state.filters.tags.has(t) ? ' on' : '');
+      b.textContent = t;
+      b.onclick = () => {
+        state.filters.tags.has(t) ? state.filters.tags.delete(t) : state.filters.tags.add(t);
+        buildChrome(); render();
+      };
+      $('#tags').appendChild(b);
+    }
+  }
+  $('#search').addEventListener('input', e => { state.filters.q = e.target.value.toLowerCase(); render(); });
+
+  // ---------- render ----------
+  function matches(e) {
+    const f = state.filters;
+    if (f.type !== 'all' && e.type !== f.type) return false;
+    if (f.project !== 'all' && e.project !== f.project) return false;
+    if (f.tags.size && ![...f.tags].every(t => e.tags.includes(t))) return false;
+    if (f.q) {
+      const hay = (e.title + ' ' + e.tags.join(' ') + ' ' + e.html.replace(/<[^>]+>/g, ' ')).toLowerCase();
+      if (!hay.includes(f.q)) return false;
+    }
+    return true;
+  }
+
+  function cardEl(e) {
+    const card = document.createElement('article');
+    card.className = 'card ' + e.type;
+    if (e.image) {
+      const w = document.createElement('div');
+      w.className = 'imgwrap';
+      w.appendChild(imgEl(e));
+      card.appendChild(w);
+    }
+    const pad = document.createElement('div');
+    pad.className = 'pad';
+    if (e.type === 'quote') {
+      pad.innerHTML = e.html;
+    } else {
+      if (e.title) {
+        const h = document.createElement('h2');
+        h.textContent = e.title;
+        pad.appendChild(h);
+      }
+      const ex = document.createElement('div');
+      ex.className = 'excerpt';
+      const text = e.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      ex.textContent = text.length > 180 ? text.slice(0, 180).replace(/\s\S*$/, '') + ' …' : text;
+      if (text) pad.appendChild(ex);
+    }
+    card.appendChild(pad);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    let m = `<span class="kind">${e.type}</span>`;
+    if (e.project) {
+      const p = state.data.projects.find(p => p.id === e.project);
+      m += `<span class="proj">${p ? p.title : e.project}</span>`;
+    }
+    if (e.tags.length) m += `<span>${e.tags.join(' · ')}</span>`;
+    meta.innerHTML = m;
+    card.appendChild(meta);
+    card.onclick = () => openModal(e);
+    return card;
+  }
+
+  function render() {
+    const grid = $('#grid');
+    grid.innerHTML = '';
+    const shown = state.data.entries.filter(matches);
+    for (const e of shown) grid.appendChild(cardEl(e));
+    $('#empty').hidden = shown.length > 0;
+
+    const note = $('#projectNote');
+    if (state.filters.project !== 'all') {
+      const p = state.data.projects.find(p => p.id === state.filters.project);
+      if (p) {
+        note.innerHTML = `<h2>${p.title}</h2>` + p.html;
+        note.hidden = false;
+      }
+    } else note.hidden = true;
+
+    $('#foot').textContent = `${shown.length} of ${state.data.entries.length} entries · last updated ${state.data.generated}`;
+  }
+
+  // ---------- modal ----------
+  function openModal(e) {
+    const inner = $('#modalInner');
+    inner.innerHTML = '';
+    if (e.image) inner.appendChild(imgEl(e));
+    const pad = document.createElement('div');
+    pad.className = 'pad';
+    let html = '';
+    if (e.title && e.type !== 'quote') html += `<h2></h2>`;
+    html += `<div class="body">${e.html}</div>`;
+    const meta = [`<span>${e.type}</span>`, `<span>${e.date}</span>`];
+    if (e.project) {
+      const p = state.data.projects.find(p => p.id === e.project);
+      meta.push(`<span>${p ? p.title : e.project}</span>`);
+    }
+    if (e.tags.length) meta.push(`<span>${e.tags.join(' · ')}</span>`);
+    if (e.source) meta.push(`<a href="${e.source}" target="_blank" rel="noopener">source ↗</a>`);
+    html += `<div class="mmeta">${meta.join('')}</div>`;
+    pad.innerHTML = html;
+    if (e.title && e.type !== 'quote') pad.querySelector('h2').textContent = e.title;
+    inner.appendChild(pad);
+    $('#modal').classList.add('open');
+  }
+  $('#modalClose').onclick = () => $('#modal').classList.remove('open');
+  $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) $('#modal').classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.remove('open'); });
+
+  // ---------- theme ----------
+  $('#themeBtn').onclick = () => {
+    const cur = document.documentElement.dataset.theme;
+    const sysDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const next = cur ? (cur === 'dark' ? 'light' : 'dark') : (sysDark ? 'light' : 'dark');
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('orrery.theme', next);
+  };
+  const savedTheme = localStorage.getItem('orrery.theme');
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+
+  // ---------- boot ----------
+  const savedPw = sessionStorage.getItem('orrery.pw');
+  if (savedPw) tryUnlock(savedPw).catch(() => sessionStorage.removeItem('orrery.pw'));
+})();
+</script>
+</body>
+</html>
