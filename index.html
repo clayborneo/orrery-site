@@ -204,6 +204,25 @@
   #projectNote ul { padding-left: 1.2em; }
   #app { display: none; }
   #app.open { display: block; }
+
+  /* ---------- map ---------- */
+  nav.views { display: flex; gap: .2rem; padding-right: .8rem; border-right: 1px solid var(--line); }
+  /* the chart keeps its own night-sky plate colors in both themes, framed like an old plate */
+  #mapWrap {
+    border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+    background: #101728; box-shadow: var(--shadow); margin-top: .4rem;
+  }
+  #mapWrap svg { display: block; width: 100%; height: auto; }
+  #mapWrap text { user-select: none; }
+  #mapWrap .node { cursor: pointer; }
+  #mapWrap .node:hover .halo { opacity: .35; }
+  #mapWrap .edge { transition: opacity .15s, stroke .15s; }
+  #mapWrap .edge.lit { opacity: .9 !important; }
+  #mapHint {
+    color: var(--ink-soft); font-style: italic; font-size: .85rem;
+    padding: .7rem .2rem;
+  }
+
 </style>
 </head>
 <body>
@@ -233,6 +252,10 @@
 <div id="app">
   <header>
     <h1>Orrery<span>.</span></h1>
+    <nav class="views" id="viewNav">
+      <button class="pill on" data-view="board">Board</button>
+      <button class="pill" data-view="map">Map</button>
+    </nav>
     <nav class="types" id="typeNav"></nav>
     <nav class="projects" id="projNav"></nav>
     <input id="search" type="search" placeholder="search…">
@@ -244,6 +267,8 @@
     <div id="projectNote" hidden></div>
     <div id="grid"></div>
     <div id="empty" hidden>Nothing here yet — the atlas awaits.</div>
+    <div id="mapWrap" hidden></div>
+    <p id="mapHint" hidden>The writing, charted. Click a constellation or a star.</p>
   </main>
   <footer id="foot"></footer>
 </div>
@@ -435,6 +460,158 @@
     } else note.hidden = true;
 
     $('#foot').textContent = `${shown.length} of ${state.data.entries.length} entries · last updated ${state.data.generated}`;
+  }
+
+  // ---------- map view ----------
+  state.view = 'board';
+  document.querySelectorAll('#viewNav .pill').forEach(b => b.onclick = () => setView(b.dataset.view));
+  function setView(v) {
+    state.view = v;
+    document.querySelectorAll('#viewNav .pill').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+    const board = v === 'board';
+    $('#grid').hidden = !board;
+    $('#tags').style.display = board ? '' : 'none';
+    $('#typeNav').style.display = board ? '' : 'none';
+    $('#search').style.display = board ? '' : 'none';
+    $('#projNav').style.display = board ? '' : 'none';
+    $('#mapWrap').hidden = board;
+    $('#mapHint').hidden = board;
+    if (board) { render(); }
+    else { $('#projectNote').hidden = true; $('#empty').hidden = true; renderMap(); }
+  }
+
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const P = { field: '#101728', ink: '#dfe4f2', soft: '#8a93b8', gold: '#e0c069', warm: '#c98f6e' };
+
+  function starPath(x, y, r) {
+    return `M${x} ${y - r * 2} L${x + r * .35} ${y - r * .35} L${x + r * 2} ${y} L${x + r * .35} ${y + r * .35} L${x} ${y + r * 2} L${x - r * .35} ${y + r * .35} L${x - r * 2} ${y} L${x - r * .35} ${y - r * .35} Z`;
+  }
+
+  function renderMap() {
+    const m = state.data.map;
+    const wrap = $('#mapWrap');
+    if (!m || !m.storylines.length) {
+      wrap.innerHTML = '<p style="color:#8a93b8;font-style:italic;padding:2rem;text-align:center">No chart yet — add storylines to content/map/.</p>';
+      return;
+    }
+    const W = 1050, H = 720, cx = W / 2, cy = H / 2;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const N = m.storylines.length;
+    const spos = new Map();
+    m.storylines.forEach((s, i) => {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / N;
+      spos.set(s.id, { x: cx + Math.cos(a) * 390, y: cy + Math.sin(a) * 250 });
+    });
+    const orbitCount = {};
+    const cpos = new Map();
+    m.characters.forEach((c, ci) => {
+      const ps = c.storylines.map(id => spos.get(id)).filter(Boolean);
+      if (!ps.length) return;
+      let x, y;
+      if (ps.length === 1) {
+        const p = ps[0], sid = c.storylines[0];
+        const k = orbitCount[sid] = (orbitCount[sid] || 0) + 1;
+        const base = Math.atan2(p.y - cy, p.x - cx);
+        const ang = base + k * 1.05 + (k % 2 ? .4 : -.6);
+        x = p.x + Math.cos(ang) * (52 + (k % 3) * 14);
+        y = p.y + Math.sin(ang) * (38 + (k % 2) * 12);
+      } else {
+        x = ps.reduce((s, p) => s + p.x, 0) / ps.length;
+        y = ps.reduce((s, p) => s + p.y, 0) / ps.length;
+        x = x * .8 + cx * .2 + ((ci * 53) % 60 - 30);
+        y = y * .8 + cy * .2 + ((ci * 37) % 44 - 22);
+      }
+      cpos.set(c.id, { x: clamp(x, 40, W - 40), y: clamp(y, 34, H - 30) });
+    });
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    svg += `<rect width="${W}" height="${H}" fill="${P.field}"/>`;
+    // faint fixed stars, deterministic scatter
+    for (let i = 0; i < 90; i++) {
+      const x = (i * 137.508) % W, y = (i * 89.83 + 47) % H, r = .6 + (i % 3) * .35;
+      svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${P.ink}" opacity="${(.12 + (i % 5) * .05).toFixed(2)}"/>`;
+    }
+    svg += `<ellipse cx="${cx}" cy="${cy}" rx="390" ry="250" fill="none" stroke="${P.soft}" stroke-width=".7" opacity=".3"/>`;
+    svg += `<ellipse cx="${cx}" cy="${cy}" rx="285" ry="180" fill="none" stroke="${P.soft}" stroke-width=".5" opacity=".18"/>`;
+    // edges
+    for (const c of m.characters) {
+      const p = cpos.get(c.id);
+      if (!p) continue;
+      for (const sid of c.storylines) {
+        const sp = spos.get(sid);
+        if (!sp) continue;
+        svg += `<line class="edge" data-char="${esc(c.id)}" x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${sp.x}" y2="${sp.y}" stroke="${c.soul ? P.gold : P.soft}" stroke-width="${c.soul ? .9 : .6}" opacity="${c.soul ? .45 : .25}" ${c.soul ? 'stroke-dasharray="3 4"' : ''}/>`;
+      }
+    }
+    // frame sun
+    if (m.frame) {
+      svg += `<g class="node" data-kind="frame"><circle class="halo" cx="${cx}" cy="${cy}" r="34" fill="${P.gold}" opacity=".14"/>`;
+      svg += `<path d="${starPath(cx, cy, 9)}" fill="${P.gold}"/><circle cx="${cx}" cy="${cy}" r="17" fill="none" stroke="${P.gold}" stroke-width=".7" opacity=".7"/>`;
+      svg += `<text x="${cx}" y="${cy + 44}" text-anchor="middle" fill="${P.gold}" font-size="12.5" letter-spacing="4" style="text-transform:uppercase">${esc(m.frame.title)}</text></g>`;
+    }
+    // storyline nodes
+    for (const s of m.storylines) {
+      const p = spos.get(s.id);
+      svg += `<g class="node" data-kind="storyline" data-id="${esc(s.id)}">`;
+      svg += `<circle class="halo" cx="${p.x}" cy="${p.y}" r="26" fill="${P.ink}" opacity=".12"/>`;
+      svg += `<circle cx="${p.x}" cy="${p.y}" r="6.5" fill="${P.ink}"/><circle cx="${p.x}" cy="${p.y}" r="11.5" fill="none" stroke="${P.ink}" stroke-width=".8" opacity=".65"/>`;
+      const above = p.y <= cy;
+      svg += `<text x="${p.x}" y="${p.y + (above ? -24 : 34)}" text-anchor="middle" fill="${P.ink}" font-size="12.5" letter-spacing="3.5" style="text-transform:uppercase">${esc(s.title)}</text></g>`;
+    }
+    // character stars
+    for (const c of m.characters) {
+      const p = cpos.get(c.id);
+      if (!p) continue;
+      const col = c.soul ? P.gold : P.ink;
+      svg += `<g class="node" data-kind="character" data-id="${esc(c.id)}">`;
+      svg += `<circle class="halo" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="14" fill="${col}" opacity=".1"/>`;
+      svg += c.soul
+        ? `<path d="${starPath(p.x, p.y, 3.4)}" fill="${col}"/>`
+        : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.8" fill="${col}" opacity=".9"/>`;
+      svg += `<text x="${(p.x + 7).toFixed(1)}" y="${(p.y + 3.5).toFixed(1)}" fill="${col}" font-size="9.5" opacity=".85" font-style="italic">${esc(c.title)}</text></g>`;
+    }
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+
+    wrap.querySelectorAll('.node').forEach(g => {
+      g.addEventListener('click', () => {
+        const { kind, id } = g.dataset;
+        if (kind === 'frame') openMapModal({ kind: 'frame' });
+        else if (kind === 'storyline') openMapModal({ kind, s: m.storylines.find(s => s.id === id) });
+        else openMapModal({ kind, c: m.characters.find(c => c.id === id) });
+      });
+      if (g.dataset.kind === 'character') {
+        g.addEventListener('mouseenter', () => wrap.querySelectorAll(`.edge[data-char="${CSS.escape(g.dataset.id)}"]`).forEach(e => e.classList.add('lit')));
+        g.addEventListener('mouseleave', () => wrap.querySelectorAll('.edge.lit').forEach(e => e.classList.remove('lit')));
+      }
+    });
+  }
+
+  function openMapModal(node) {
+    const m = state.data.map;
+    const inner = $('#modalInner');
+    let title = '', body = '', metaBits = [];
+    if (node.kind === 'frame') {
+      title = m.frame.title;
+      body = m.frame.html;
+    } else if (node.kind === 'storyline') {
+      const s = node.s;
+      title = s.title;
+      body = s.html;
+      if (s.mood) metaBits.push(`<span>${esc(s.mood)}</span>`);
+      if (s.places.length) metaBits.push(`<span>${esc(s.places.join(' · '))}</span>`);
+      const cast = m.characters.filter(c => c.storylines.includes(s.id)).map(c => c.title);
+      if (cast.length) metaBits.push(`<span>cast: ${esc(cast.join(', '))}</span>`);
+    } else {
+      const c = node.c;
+      title = c.title;
+      body = c.html;
+      const names = c.storylines.map(id => (m.storylines.find(s => s.id === id) || { title: id }).title);
+      metaBits.push(`<span>${c.soul ? 'recurring soul · ' : ''}${esc(names.join(' · '))}</span>`);
+    }
+    inner.innerHTML = `<div class="pad"><h2>${esc(title)}</h2><div class="body">${body}</div>` +
+      (metaBits.length ? `<div class="mmeta">${metaBits.join('')}</div>` : '') + `</div>`;
+    $('#modal').classList.add('open');
   }
 
   // ---------- modal ----------
