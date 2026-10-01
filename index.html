@@ -278,6 +278,8 @@
 <script>
 (() => {
   const $ = s => document.querySelector(s);
+  // PLAIN is flipped to true by `build.js --plain` (the Cloudflare Access deploy); the sealed build keeps false.
+  const PLAIN = /*__MODE__*/false;
   const state = {
     pw: null, keys: new Map(), data: null, blobs: new Map(),
     filters: { type: 'all', project: 'all', tags: new Set(), q: '' },
@@ -303,6 +305,7 @@
   async function fetchDecrypted(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('fetch failed: ' + url);
+    if (PLAIN) return res.arrayBuffer();
     return decryptBuf(await res.arrayBuffer());
   }
 
@@ -310,9 +313,9 @@
   async function tryUnlock(pw) {
     state.pw = pw;
     state.keys.clear();
-    const plain = await fetchDecrypted('data.enc');
+    const plain = await fetchDecrypted(PLAIN ? 'data.json' : 'data.enc');
     state.data = JSON.parse(new TextDecoder().decode(plain));
-    sessionStorage.setItem('orrery.pw', pw);
+    if (!PLAIN) sessionStorage.setItem('orrery.pw', pw);
     $('#lock').classList.add('hidden');
     $('#app').classList.add('open');
     buildChrome();
@@ -336,6 +339,7 @@
       const img = en.target;
       observer.unobserve(img);
       const { file, mime } = JSON.parse(img.dataset.enc);
+      if (PLAIN) { img.src = file; continue; }
       try {
         if (!state.blobs.has(file)) {
           const plain = await fetchDecrypted(file);
@@ -653,8 +657,14 @@
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
 
   // ---------- boot ----------
-  const savedPw = sessionStorage.getItem('orrery.pw');
-  if (savedPw) tryUnlock(savedPw).catch(() => sessionStorage.removeItem('orrery.pw'));
+  if (PLAIN) {
+    // Cloudflare Access already checked who you are: no passphrase, no lock button.
+    $('#lockBtn').hidden = true;
+    tryUnlock(null).catch(e => { $('#lockError').textContent = 'could not load the atlas'; console.error(e); });
+  } else {
+    const savedPw = sessionStorage.getItem('orrery.pw');
+    if (savedPw) tryUnlock(savedPw).catch(() => sessionStorage.removeItem('orrery.pw'));
+  }
 })();
 </script>
 </body>
